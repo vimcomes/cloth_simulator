@@ -1,5 +1,6 @@
 build*/
 session
+external/lib/
 *.swp
 *.swo
 .DS_Store
