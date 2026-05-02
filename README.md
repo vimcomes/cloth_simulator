@@ -1,113 +1,122 @@
-# Cloth Simulation
+<div align="center">
+  <img src="docs/banner.png" alt="Cloth Simulator" width="600"/>
+  <h1>🧵 Cloth Simulator</h1>
+  <p>
+    <strong>Real-time interactive cloth simulation</strong><br/>
+    C++20 · SDL2 · OpenGL 4.1 · Verlet Integration
+  </p>
+  <p>
+    <img src="https://img.shields.io/badge/C%2B%2B-20-blue?style=flat&logo=c%2B%2B"/>
+    <img src="https://img.shields.io/badge/SDL2-2.x-orange?style=flat&logo=sdl"/>
+    <img src="https://img.shields.io/badge/OpenGL-4.1-red?style=flat&logo=opengl"/>
+    <img src="https://img.shields.io/badge/license-MIT-green?style=flat"/>
+    <img src="https://img.shields.io/badge/platform-Linux-eee?style=flat&logo=linux"/>
+  </p>
+</div>
 
-Real-time interactive cloth simulation — CPU Verlet physics, OpenGL 4.x rendering, SDL2 input.
+---
 
-![cloth](https://img.shields.io/badge/C%2B%2B-20-blue) ![opengl](https://img.shields.io/badge/OpenGL-4.1-green) ![sdl2](https://img.shields.io/badge/SDL2-2.30-orange)
+## ✨ Features
 
-## Features
+- **Realistic physics** — Verlet integration with structural, shear, and bend constraints
+- **Heavy fabric feel** — tunable damping from light chiffon to heavy velvet (`[` / `]` keys)
+- **Mouse interaction** — grab and drag any point on the cloth with realistic velocity transfer
+- **3D camera** — orbit with right mouse drag, zoom with scroll wheel
+- **Texture mapping** — drag & drop any image onto the window to apply as texture
+- **Self-collision** — cloth pushes through itself with spatial-hash broadphase
+- **Dynamic wind** — multi-frequency noise for natural ambient motion
+- **Fixed timestep** — physics decoupled from framerate via accumulator
 
-- Position-Based Dynamics with Verlet integration
-- 40×N particle grid, top row pinned (cloth hangs from top edge)
-- Three constraint types: structural, shear, bend
-- 8 physics substeps per frame — stable, non-stretchy fabric
-- Phong/Blinn-Phong shading with per-frame normal recomputation
-- Mouse grab and drag — single-point pick with velocity transfer on release
-- **Heaviness slider** — one knob controls damping + wind, `[` lighter `]` heavier
-- **Custom texture** — drag-and-drop any PNG/JPG onto the window
-- Grid proportions auto-adapt to image aspect ratio (~1600 particles total)
-- Orbit camera: right-drag to rotate, scroll to zoom
-
-## Controls
+## 🎮 Controls
 
 | Input | Action |
-|---|---|
-| Left mouse | Grab and drag cloth |
-| Right mouse drag | Rotate camera |
-| Mouse wheel | Zoom in/out |
-| `[` / `]` | Decrease / increase heaviness |
+|-------|--------|
+| Left mouse drag | Grab and pull cloth |
+| Right mouse drag | Orbit camera |
+| Mouse wheel | Zoom in / out |
+| `[` / `]` | Decrease / increase fabric heaviness |
 | `R` | Reset cloth |
+| Drag image file | Apply as texture |
 | `Esc` | Quit |
-| Drag & Drop file | Load texture + resize grid |
 
-## Build
+## ⚙️ How It Works
 
-### Dependencies
+### Particle System
+Each point on the cloth is a `Particle` with position, previous position (for Verlet), and accumulated forces. The Verlet integration step:
 
-```bash
-# Debian/Ubuntu
-sudo apt install libsdl2-dev libglm-dev libglew-dev
+```
+new_pos = pos + (pos - prev_pos) × damping + acc × dt²
 ```
 
-If the dev packages are unavailable, the build system falls back to bundled headers in `external/` (SDL2 headers and GLM headers are checked in for convenience).
+### Constraints
+Three constraint types maintain fabric structure:
+- **Structural** — horizontal & vertical neighbors
+- **Shear** — diagonal neighbors (prevents shearing)
+- **Bend** — skip-one neighbors (resists folding)
 
-### Compile
+Constraints are solved iteratively (8 iterations × 8 substeps per frame).
 
-```bash
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
-```
+### Self-Collision
+A spatial hash grid (`std::unordered_map` with 3D cell key) provides O(n) broadphase collision detection. Connected structural neighbors are excluded from collision pairs.
 
-### Run
-
-```bash
-./cloth_sim                        # procedural checker texture, square 40×40 grid
-./cloth_sim /path/to/image.png     # custom texture, grid adapts to image proportions
-```
-
-Or drag any image onto the running window to reload texture and resize the grid live.
-
-## Physics Parameters
-
-All tunable via constants in `src/cloth.h` and runtime via keyboard:
-
-| Parameter | Value | Effect |
-|---|---|---|
-| `NUM_SUBSTEPS` | 8 | Substeps per frame — higher = less stretch |
-| `CONSTRAINT_ITERS` | 8/substep | Solver iterations — higher = stiffer |
-| `GRAVITY_SCALE` | 12.0 | Gravity multiplier |
-| `PARTICLE_MASS` | 1.0 | Particle mass (kg) |
-| `SPACING` | 0.05 m | Rest distance between particles |
-| `damping` (runtime) | 0.9940–0.9999/substep | Energy loss per substep |
-
-**Heaviness** maps to `damping` on an exponential scale:
-- Level 0 → `damping=0.9999` (~95% energy remaining per second, sheer fabric)
-- Level 7 → `damping=0.9970` (~10% energy remaining per second, heavy curtain)
-- Level 10 → `damping=0.9940` (~0.6% energy remaining per second, near-static)
-
-## Project Structure
+## 🏗️ Project Structure
 
 ```
 cloth_sim/
 ├── CMakeLists.txt
-├── README.md
-├── AGENTS.md           ← AI agent continuation guide
 ├── external/
-│   ├── stb_image.h     ← single-header image loader
-│   ├── SDL2/           ← SDL2 headers (bundled for headless builds)
-│   ├── glm/            ← GLM headers (bundled)
-│   └── lib/            ← libSDL2.so symlink
+│   └── stb_image.h
 ├── shaders/
 │   ├── vertex.glsl
 │   └── fragment.glsl
 └── src/
-    ├── main.cpp         ← SDL2 init, event loop, physics/render orchestration
-    ├── particle.h       ← Particle struct + Verlet integration
-    ├── cloth.h / .cpp   ← NxM grid, constraints, substep update
-    ├── renderer.h / .cpp← OpenGL VAO/VBO, shaders, texture, normals
-    ├── interaction.h / .cpp ← Ray-cast pick, drag with velocity transfer
-    └── camera.h         ← Orbit camera, ray unprojection
+    ├── main.cpp         — Entry point, game loop, event handling
+    ├── cloth.h / .cpp   — Cloth grid, constraints, physics, self-collision
+    ├── particle.h       — Particle struct with Verlet integration
+    ├── renderer.h / .cpp — OpenGL VAO/VBO/shader/texture management
+    ├── interaction.h / .cpp — Mouse raycasting & drag handling
+    └── camera.h         — Orbital camera with ray generation
 ```
 
-## Architecture Notes
+## 🔧 Build
 
-**Physics loop** (per frame):
-1. For each of 8 substeps:
-   - Apply gravity + wind forces
-   - Verlet integrate positions
-   - Solve constraints (8 iterations)
-2. Grabbed particle is temporarily pinned during the full substep loop so constraints propagate naturally from the fixed point outward
+### Dependencies
+```bash
+sudo apt install libsdl2-dev libglm-dev libglew-dev
+```
+Download [`stb_image.h`](https://github.com/nothings/stb/blob/master/stb_image.h) into `external/`.
 
-**Interaction**: single-particle grab, not area-based. Velocity transferred on release via `prev_position = prev_mouse_target` — cloth continues moving in mouse direction after release.
+### Build & Run
+```bash
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+./cloth_sim          # starts with checkerboard texture
+./cloth_sim flag.png # starts with custom texture
+```
 
-**Texture orientation**: `stbi_set_flip_vertically_on_load` is intentionally **off** — UV row 0 (top of cloth, pinned) maps to the top of the image file directly.
+### Runtime texture loading
+Drag any image file (PNG, JPG, etc.) onto the window to swap textures instantly.
+
+## 🧪 Tuning
+
+Key parameters in `cloth.h` for fine-tuning the fabric feel:
+
+| Parameter | Default | Effect |
+|-----------|---------|--------|
+| `SPACING` | 0.05 | Grid resolution |
+| `GRAVITY_SCALE` | 12.0 | Gravity multiplier |
+| `CONSTRAINT_ITERS` | 8 | Solver iterations per substep |
+| `PARTICLE_MASS` | 1.0 | Per-particle mass |
+
+Runtime heaviness (`[` / `]`) maps to an exponential damping scale from `0.9999` (light) to `0.9940` (heavy).
+
+## 📸 Screenshots
+
+<p align="center">
+  <em>Screenshots coming soon</em>
+</p>
+
+## 📄 License
+
+MIT — feel free to use, modify, and share.

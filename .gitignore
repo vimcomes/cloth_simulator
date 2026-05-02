@@ -1,9 +1,5 @@
-build/
-.cache/
-*.o
-*.a
-*.so
-*.so.*
-compile_commands.json
-.vscode/
-.idea/
+build*/
+session
+*.swp
+*.swo
+.DS_Store
