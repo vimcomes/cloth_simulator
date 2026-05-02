@@ -126,12 +126,6 @@ Runtime heaviness (`[` / `]`) maps to an exponential damping scale from `0.9999`
   <em>Grabbing and dragging — side view</em>
 </p>
 
-## 👥 Contributors
-
-- **[vimcomes](https://github.com/vimcomes)** — project lead, physics & architecture
-- **Claude** (Anthropic) — AI pair programmer
-- **DeepSeek** — AI pair programmer
-
 ## 📄 License
 
 MIT — feel free to use, modify, and share.
