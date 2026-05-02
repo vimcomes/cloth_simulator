@@ -11,6 +11,7 @@
     <img src="https://img.shields.io/badge/OpenGL-4.1-red?style=flat&logo=opengl"/>
     <img src="https://img.shields.io/badge/license-MIT-green?style=flat"/>
     <img src="https://img.shields.io/badge/platform-Linux-eee?style=flat&logo=linux"/>
+    <img src="https://img.shields.io/badge/AI-DeepSeek-8B5CF6?style=flat"/>
   </p>
 </div>
 
