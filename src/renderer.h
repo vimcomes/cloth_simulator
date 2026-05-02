@@ -12,15 +12,16 @@ public:
     ~Renderer();
 
     bool init(const std::string& texture_path);
-    void reload_texture(const std::string& path);  // смена текстуры без пересоздания шейдеров
+    void reload_texture(const std::string& path);
     void render(const Cloth& cloth, const Camera& cam, int win_w, int win_h);
 
-    // Узнать размер изображения не загружая его в GPU (через stbi_info)
     static bool image_size(const std::string& path, int& w, int& h);
 
 private:
     GLuint vao_, vbo_, ebo_, shader_, texture_;
     int    num_indices_ = 0;
+
+    GLint u_model_, u_view_, u_proj_, u_light_dir_, u_eye_pos_, u_tex_;
 
     struct Vertex {
         glm::vec3 pos;

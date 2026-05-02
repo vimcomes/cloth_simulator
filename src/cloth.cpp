@@ -12,6 +12,7 @@ void Cloth::reset(int new_cols, int new_rows) {
 
     particles.clear();
     constraints.clear();
+    grabbed_idx = -1;
 
     particles.reserve(rows * cols);
     for (int r = 0; r < rows; ++r) {
@@ -64,8 +65,16 @@ void Cloth::apply_forces(float time) {
         if (p.pinned) continue;
         p.apply_force(gravity * p.mass);
 
-        float wind_z = wind_strength * std::sin(time * 0.4f + p.position.x * 3.0f);
-        p.apply_force(glm::vec3(0.0f, 0.0f, wind_z));
+        float wz = wind_strength * (
+            std::sin(time * 0.4f + p.position.x * 3.0f) +
+            std::sin(time * 0.7f + p.position.y * 2.5f) * 0.5f +
+            std::sin(time * 0.2f + p.position.z * 4.0f) * 0.3f
+        );
+        float wx = wind_strength * 0.3f * (
+            std::sin(time * 0.3f + p.position.y * 3.0f) +
+            std::sin(time * 0.6f + p.position.x * 2.0f) * 0.5f
+        );
+        p.apply_force(glm::vec3(wx, 0.0f, wz));
     }
 }
 
@@ -85,7 +94,7 @@ void Cloth::solve_constraints() {
             if (dist < 1e-6f) continue;
 
             float diff = (dist - c.rest_length) / dist;
-            glm::vec3 correction = delta * 0.5f * diff;
+            glm::vec3 correction = delta * 0.5f * diff * stiffness;
 
             if (!a.pinned) a.position += correction;
             if (!b.pinned) b.position -= correction;
@@ -93,11 +102,84 @@ void Cloth::solve_constraints() {
     }
 }
 
+void Cloth::self_collision() {
+    const float cell_size = SPACING * 2.0f;
+    const float min_dist  = SPACING * 0.8f;
+
+    auto hash_fn = [](const glm::ivec3& k) -> size_t {
+        return size_t(k.x * 73856093) ^ size_t(k.y * 19349663) ^ size_t(k.z * 83492791);
+    };
+
+    std::unordered_map<glm::ivec3, std::vector<int>, decltype(hash_fn)> grid(0, hash_fn);
+
+    for (int i = 0; i < (int)particles.size(); ++i) {
+        glm::ivec3 key(
+            (int)std::floor(particles[i].position.x / cell_size),
+            (int)std::floor(particles[i].position.y / cell_size),
+            (int)std::floor(particles[i].position.z / cell_size)
+        );
+        grid[key].push_back(i);
+    }
+
+    for (int i = 0; i < (int)particles.size(); ++i) {
+        if (particles[i].pinned) continue;
+
+        glm::ivec3 base(
+            (int)std::floor(particles[i].position.x / cell_size),
+            (int)std::floor(particles[i].position.y / cell_size),
+            (int)std::floor(particles[i].position.z / cell_size)
+        );
+
+        for (int dx = -1; dx <= 1; ++dx) {
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dz = -1; dz <= 1; ++dz) {
+                    glm::ivec3 nk = base + glm::ivec3(dx, dy, dz);
+                    auto it = grid.find(nk);
+                    if (it == grid.end()) continue;
+
+                    for (int j : it->second) {
+                        if (j <= i) continue;
+                        if (are_connected(i, j, cols)) continue;
+
+                        glm::vec3 delta = particles[j].position - particles[i].position;
+                        float dist = glm::length(delta);
+                        if (dist < min_dist && dist > 1e-6f) {
+                            float correction = (min_dist - dist) / dist * 0.5f;
+                            glm::vec3 push = delta * correction;
+                            if (!particles[i].pinned) particles[i].position -= push;
+                            if (!particles[j].pinned) particles[j].position += push;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+bool Cloth::are_connected(int i, int j, int c) {
+    int ci = i % c, ri = i / c;
+    int cj = j % c, rj = j / c;
+    int dc = std::abs(ci - cj);
+    int dr = std::abs(ri - rj);
+    return (dc <= 1 && dr <= 1) || (dc == 2 && dr == 0) || (dc == 0 && dr == 2);
+}
+
 void Cloth::update(float dt, float time) {
+    bool was_pinned = false;
+    if (grabbed_idx >= 0 && grabbed_idx < (int)particles.size()) {
+        was_pinned = particles[grabbed_idx].pinned;
+        particles[grabbed_idx].pinned = true;
+    }
+
     float sub_dt = dt / NUM_SUBSTEPS;
     for (int s = 0; s < NUM_SUBSTEPS; ++s) {
         apply_forces(time + s * sub_dt);
         integrate(sub_dt);
         solve_constraints();
+        self_collision();
+    }
+
+    if (grabbed_idx >= 0 && grabbed_idx < (int)particles.size()) {
+        particles[grabbed_idx].pinned = was_pinned;
     }
 }

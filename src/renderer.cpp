@@ -8,7 +8,10 @@
 #include <cstdio>
 #include <vector>
 
-Renderer::Renderer() : vao_(0), vbo_(0), ebo_(0), shader_(0), texture_(0) {}
+Renderer::Renderer()
+    : vao_(0), vbo_(0), ebo_(0), shader_(0), texture_(0),
+      u_model_(-1), u_view_(-1), u_proj_(-1),
+      u_light_dir_(-1), u_eye_pos_(-1), u_tex_(-1) {}
 
 Renderer::~Renderer() {
     if (vao_)     glDeleteVertexArrays(1, &vao_);
@@ -19,20 +22,43 @@ Renderer::~Renderer() {
 }
 
 bool Renderer::init(const std::string& texture_path) {
-    // Shaders – look relative to executable (CMake copies them)
     shader_ = load_program("shaders/vertex.glsl", "shaders/fragment.glsl");
     if (!shader_) return false;
+
+    u_model_     = glGetUniformLocation(shader_, "u_model");
+    u_view_      = glGetUniformLocation(shader_, "u_view");
+    u_proj_      = glGetUniformLocation(shader_, "u_proj");
+    u_light_dir_ = glGetUniformLocation(shader_, "u_light_dir");
+    u_eye_pos_   = glGetUniformLocation(shader_, "u_eye_pos");
+    u_tex_       = glGetUniformLocation(shader_, "u_tex");
 
     if (!texture_path.empty())
         texture_ = load_texture(texture_path);
     if (!texture_)
         texture_ = make_checker_texture();
 
-    // Allocate geometry arrays (we'll fill each frame)
-    // Just create VAO/VBO/EBO
     glGenVertexArrays(1, &vao_);
     glGenBuffers(1, &vbo_);
     glGenBuffers(1, &ebo_);
+
+    glBindVertexArray(vao_);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+    glBufferData(GL_ARRAY_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex),
+                          (void*)offsetof(Vertex, pos));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex),
+                          (void*)offsetof(Vertex, uv));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex),
+                          (void*)offsetof(Vertex, normal));
+
+    glBindVertexArray(0);
 
     return true;
 }
@@ -45,11 +71,9 @@ void Renderer::build_indices(const Cloth& cloth) {
             unsigned int tr = cloth.index(c+1, r);
             unsigned int bl = cloth.index(c,   r+1);
             unsigned int br = cloth.index(c+1, r+1);
-            // Triangle 1
             indices_.push_back(tl);
             indices_.push_back(bl);
             indices_.push_back(tr);
-            // Triangle 2
             indices_.push_back(tr);
             indices_.push_back(bl);
             indices_.push_back(br);
@@ -59,10 +83,8 @@ void Renderer::build_indices(const Cloth& cloth) {
 }
 
 void Renderer::compute_normals(const Cloth& cloth) {
-    // Zero normals
     for (auto& v : vertices_) v.normal = glm::vec3(0.0f);
 
-    // Accumulate face normals
     for (int i = 0; i < num_indices_; i += 3) {
         unsigned int ia = indices_[i], ib = indices_[i+1], ic = indices_[i+2];
         glm::vec3 ab = vertices_[ib].pos - vertices_[ia].pos;
@@ -94,10 +116,6 @@ void Renderer::render(const Cloth& cloth, const Camera& cam, int win_w, int win_
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glEnable(GL_DEPTH_TEST);
 
-    // Пересобираем индексный буфер если сетка изменилась
-    int expected = (cloth.cols - 1) * (cloth.rows - 1) * 6;
-    if (num_indices_ != expected) build_indices(cloth);
-
     update_vertices(cloth);
     compute_normals(cloth);
 
@@ -107,50 +125,39 @@ void Renderer::render(const Cloth& cloth, const Camera& cam, int win_w, int win_
     glm::mat4 proj  = cam.projection(aspect);
 
     glUseProgram(shader_);
-    glUniformMatrix4fv(glGetUniformLocation(shader_, "u_model"), 1, GL_FALSE, glm::value_ptr(model));
-    glUniformMatrix4fv(glGetUniformLocation(shader_, "u_view"),  1, GL_FALSE, glm::value_ptr(view));
-    glUniformMatrix4fv(glGetUniformLocation(shader_, "u_proj"),  1, GL_FALSE, glm::value_ptr(proj));
+    glUniformMatrix4fv(u_model_, 1, GL_FALSE, glm::value_ptr(model));
+    glUniformMatrix4fv(u_view_,  1, GL_FALSE, glm::value_ptr(view));
+    glUniformMatrix4fv(u_proj_,  1, GL_FALSE, glm::value_ptr(proj));
 
     glm::vec3 light_dir = glm::normalize(glm::vec3(1.0f, 2.0f, 3.0f));
-    glUniform3fv(glGetUniformLocation(shader_, "u_light_dir"), 1, glm::value_ptr(light_dir));
+    glUniform3fv(u_light_dir_, 1, glm::value_ptr(light_dir));
     glm::vec3 eye = cam.eye();
-    glUniform3fv(glGetUniformLocation(shader_, "u_eye_pos"), 1, glm::value_ptr(eye));
-    glUniform1i(glGetUniformLocation(shader_, "u_tex"), 0);
+    glUniform3fv(u_eye_pos_, 1, glm::value_ptr(eye));
+    glUniform1i(u_tex_, 0);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture_);
 
     glBindVertexArray(vao_);
 
+    int expected = (cloth.cols - 1) * (cloth.rows - 1) * 6;
+    if (num_indices_ != expected) {
+        build_indices(cloth);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                     (GLsizeiptr)(indices_.size() * sizeof(unsigned int)),
+                     indices_.data(), GL_STATIC_DRAW);
+    }
+
     glBindBuffer(GL_ARRAY_BUFFER, vbo_);
     glBufferData(GL_ARRAY_BUFFER,
                  (GLsizeiptr)(vertices_.size() * sizeof(Vertex)),
                  vertices_.data(), GL_DYNAMIC_DRAW);
 
-    // pos
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex),
-                          (void*)offsetof(Vertex, pos));
-    // uv
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex),
-                          (void*)offsetof(Vertex, uv));
-    // normal
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex),
-                          (void*)offsetof(Vertex, normal));
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-                 (GLsizeiptr)(indices_.size() * sizeof(unsigned int)),
-                 indices_.data(), GL_STATIC_DRAW);
-
     glDrawElements(GL_TRIANGLES, num_indices_, GL_UNSIGNED_INT, nullptr);
 
     glBindVertexArray(0);
 }
-
-// ── Shader utilities ────────────────────────────────────────────────────────
 
 GLuint Renderer::compile_shader(GLenum type, const std::string& src) {
     GLuint s = glCreateShader(type);
@@ -251,8 +258,6 @@ GLuint Renderer::make_checker_texture() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     return tex;
 }
-
-// ── Публичные утилиты ────────────────────────────────────────────────────────
 
 void Renderer::reload_texture(const std::string& path) {
     GLuint tex = path.empty() ? 0 : load_texture(path);
