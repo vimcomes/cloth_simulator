@@ -114,7 +114,7 @@ Runtime heaviness (`[` / `]`) maps to an exponential damping scale from `0.9999`
 ## 📸 Screenshots
 
 <p align="center">
-  <em>Screenshots coming soon</em>
+  <img src="docs/banner.png" alt="Cloth Simulator in action" width="720"/>
 </p>
 
 ## 📄 License
